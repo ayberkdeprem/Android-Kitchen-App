@@ -317,4 +317,13 @@ class InventoryViewModel(application: Application) : AndroidViewModel(applicatio
             dao.insertShoppingItem(ShoppingItem(name = item.name, quantityNeeded = 1.0, unit = item.unit))
         }
     }
+
+    fun updateRecipe(recipe: Recipe) {
+        viewModelScope.launch {
+            dao.updateRecipe(recipe)
+            // loadRecipes()  <-- BU SATIRI SİLDİK, ARTIK HATA VERMEYECEK
+
+            calculateCookableRecipes() // Bunu tutuyoruz, "yapılabilir yemekleri" tekrar hesaplasın.
+        }
+    }
 }

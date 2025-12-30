@@ -36,7 +36,7 @@ fun ShoppingScreen(viewModel: InventoryViewModel = viewModel()) {
     if (showBuyDialog && itemToBuy != null) {
         AlertDialog(
             onDismissRequest = { showBuyDialog = false },
-            title = { Text("Stoğa Ekle") },
+            title = { Text("Stoka Ekle") },
             text = {
                 Column {
                     Text("Listede görünen miktar: ${itemToBuy!!.quantityNeeded} ${itemToBuy!!.unit}")

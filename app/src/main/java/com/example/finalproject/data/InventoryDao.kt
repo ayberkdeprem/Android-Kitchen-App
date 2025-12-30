@@ -54,6 +54,9 @@ interface InventoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecipe(recipe: Recipe)
 
+    @Update
+    suspend fun updateRecipe(recipe: Recipe)
+
     @Delete
     suspend fun deleteRecipe(recipe: Recipe)
 

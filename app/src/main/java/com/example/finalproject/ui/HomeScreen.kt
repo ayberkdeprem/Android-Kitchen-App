@@ -166,9 +166,27 @@ fun ExpandableRecipeCard(
     var expanded by remember { mutableStateOf(false) }
     var portionCount by remember { mutableStateOf(1) }
 
+    // --- RENKLENDİRME İÇİN GEREKLİ AYARLAR ---
+    val isDark = isSystemInDarkTheme() // Koyu mod kontrolü
+
+    fun getRecipeColor(category: String): Color {
+        if (isDark) return Color(0xFF303030) // Koyu modda gri kalsın
+        return when (category) {
+            "Ana Yemek" -> Color(0xFFFFEBEE) // Kırmızımsı
+            "Çorba" -> Color(0xFFFFF3E0)     // Turuncumsu
+            "Salata" -> Color(0xFFE8F5E9)    // Yeşil
+            "Tatlı" -> Color(0xFFF3E5F5)     // Morumsu
+            "İçecek" -> Color(0xFFE3F2FD)    // Mavi
+            "Kahvaltı" -> Color(0xFFFFFDE7)  // Sarı
+            else -> Color(0xFFF5F5F5)        // Gri
+        }
+    }
+    // ----------------------------------------
+
     val ingredients by viewModel.getRecipeIngredientsFlow(recipe.recipeId).collectAsState(initial = emptyList())
     val inventory by viewModel.ingredientList.collectAsState()
 
+    // Stok Yeterlilik Kontrolü
     val isSufficient = remember(portionCount, ingredients, inventory) {
         if (ingredients.isEmpty()) true else {
             ingredients.all { req ->
@@ -188,6 +206,7 @@ fun ExpandableRecipeCard(
         }
     }
 
+    // Düzenleme Diyaloğu Değişkenleri
     var showEditDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<RecipeRequirement?>(null) }
     var editAmount by remember { mutableStateOf("") }
@@ -195,6 +214,7 @@ fun ExpandableRecipeCard(
     var isUnitExpanded by remember { mutableStateOf(false) }
     val unitOptions = listOf("kg", "gr", "L", "ml", "adet", "paket", "bardak", "yk", "tk", "çk")
 
+    // Düzenleme Penceresi (Alert Dialog)
     if (showEditDialog && editingItem != null) {
         AlertDialog(
             onDismissRequest = { showEditDialog = false },
@@ -213,26 +233,37 @@ fun ExpandableRecipeCard(
         )
     }
 
-    val cardColor = if (isSuggestion) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surface
-    // Koyu modda suggestion kartının rengi çok parlak kalabilir, onu dinamik yapmak daha iyi olur ama şimdilik böyle kalsın.
+    // --- KART RENGİNİ BELİRLEME ---
+    // Eğer "Öneri" ise ve koyu modda değilsek özel yeşil, yoksa kategori rengi
+    val cardColor = if (isSuggestion && !isDark) Color(0xFFE8F5E9) else getRecipeColor(recipe.category)
 
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable { expanded = !expanded },
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isSuggestion && !isSystemInDarkTheme()) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surface) // Ufak bir koyu mod düzeltmesi
+        colors = CardDefaults.cardColors(containerColor = cardColor) // Rengi buraya veriyoruz
     ) {
         Column {
+            // Resim Alanı
             if (!recipe.imageUrl.isNullOrEmpty()) {
-                AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(recipe.imageUrl).crossfade(true).error(android.R.drawable.ic_menu_report_image).build(), contentDescription = null, modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)), contentScale = ContentScale.Crop)
-            } else { Box(modifier = Modifier.fillMaxWidth().height(10.dp).background(MaterialTheme.colorScheme.primary)) }
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current).data(recipe.imageUrl).crossfade(true).error(android.R.drawable.ic_menu_report_image).build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxWidth().height(10.dp).background(MaterialTheme.colorScheme.primary))
+            }
 
+            // İçerik Alanı
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text(text = recipe.recipeName, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
-                            Text(text = recipe.category, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        // Kategori Etiketi (Renkli arka planda okunsun diye beyaz şeffaf zemin yaptık)
+                        Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.6f)) {
+                            Text(text = recipe.category, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color.Black)
                         }
                     }
                     if (isSuggestion) Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFF4CAF50))
@@ -265,6 +296,7 @@ fun ExpandableRecipeCard(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // Porsiyon Kontrolü
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -292,6 +324,7 @@ fun ExpandableRecipeCard(
                         }
                     }
 
+                    // Yetersiz Stok Uyarısı
                     if (!isSufficient) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
@@ -312,6 +345,7 @@ fun ExpandableRecipeCard(
                         }
                     }
 
+                    // Butonlar
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {

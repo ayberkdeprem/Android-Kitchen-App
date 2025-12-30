@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,12 +39,28 @@ fun InventoryScreen(viewModel: InventoryViewModel = viewModel()) {
     val inventoryList by viewModel.ingredientList.collectAsState()
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val isDark = isSystemInDarkTheme() // Koyu mod kontrolü
 
     val unitOptions = listOf("kg", "gr", "L", "ml", "adet", "paket", "bardak", "kaşık")
     val categoryOptions = listOf("Genel", "Sebze", "Meyve", "Et & Balık", "Süt Ürünü", "Bakliyat", "Baharat", "Atıştırmalık")
 
     var selectedCategoryFilter by remember { mutableStateOf("Tümü") }
     var searchText by remember { mutableStateOf("") }
+
+    // --- RENK BELİRLEME FONKSİYONU ---
+    fun getCategoryColor(category: String): Color {
+        if (isDark) return Color(0xFF303030) // Koyu modda çok renkli yapıp göz yormayalım, standart gri kalsın.
+        return when (category) {
+            "Sebze" -> Color(0xFFE8F5E9)      // Açık Yeşil
+            "Meyve" -> Color(0xFFF3E5F5)      // Açık Mor
+            "Et & Balık" -> Color(0xFFFFEBEE) // Açık Kırmızı
+            "Süt Ürünü" -> Color(0xFFFFFDE7)  // Açık Sarı
+            "Bakliyat" -> Color(0xFFEFEBE9)   // Açık Kahve
+            "Baharat" -> Color(0xFFFFE0B2)    // Açık Turuncu
+            "Atıştırmalık" -> Color(0xFFE0F7FA) // Açık Mavi
+            else -> Color(0xFFF5F5F5)         // Gri (Genel)
+        }
+    }
 
     fun isLowStock(item: Ingredient): Boolean {
         return when (item.unit) {
@@ -116,10 +133,7 @@ fun InventoryScreen(viewModel: InventoryViewModel = viewModel()) {
         )
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp)
-    ) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
         item {
             Column {
                 Text("📦 Mutfak Stoğu", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -128,25 +142,22 @@ fun InventoryScreen(viewModel: InventoryViewModel = viewModel()) {
                 OutlinedTextField(value = searchText, onValueChange = { searchText = it }, label = { Text("Stokta ara...") }, leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White))
 
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-
                     val filterOptions = listOf("Tümü", "⚠️ Kritik") + categoryOptions
-
                     filterOptions.forEach { cat ->
                         val isSelected = selectedCategoryFilter == cat
                         val isCriticalButton = cat == "⚠️ Kritik"
-                        val containerColor = if (isCriticalButton) MaterialTheme.colorScheme.errorContainer else Color.Transparent
-                        val labelColor = if (isCriticalButton) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                        val selectedContainerColor = if (isCriticalButton) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        val selectedLabelColor = Color.White
-                        val borderColor = if (isCriticalButton) MaterialTheme.colorScheme.error else Color.Gray
-
                         FilterChip(
                             selected = isSelected,
                             onClick = { selectedCategoryFilter = cat },
                             label = { Text(text = cat, fontWeight = if (isCriticalButton) FontWeight.Bold else FontWeight.Normal) },
                             enabled = true,
-                            colors = FilterChipDefaults.filterChipColors(containerColor = containerColor, labelColor = labelColor, selectedContainerColor = selectedContainerColor, selectedLabelColor = selectedLabelColor),
-                            border = FilterChipDefaults.filterChipBorder(enabled = true, selected = isSelected, borderColor = borderColor)
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = if (isCriticalButton) MaterialTheme.colorScheme.errorContainer else Color.Transparent,
+                                labelColor = if (isCriticalButton) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                selectedContainerColor = if (isCriticalButton) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = Color.White
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(enabled = true, selected = isSelected, borderColor = if (isCriticalButton) MaterialTheme.colorScheme.error else Color.Gray)
                         )
                     }
                 }
@@ -170,43 +181,30 @@ fun InventoryScreen(viewModel: InventoryViewModel = viewModel()) {
                             ExposedDropdownMenu(expanded = isCategoryExpanded, onDismissRequest = { isCategoryExpanded = false }) { categoryOptions.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { category = option; isCategoryExpanded = false }) } }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-
                         Button(onClick = { if (name.isNotEmpty()) { viewModel.addIngredient(name, quantity, unit, category); name = ""; quantity = ""; keyboardController?.hide() } }, modifier = Modifier.fillMaxWidth()) { Text("Stoka Ekle") }
                     }
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Dolaptakiler (${selectedCategoryFilter}):", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
 
-        // --- YENİ EKLENEN KISIM: BOŞ DURUM KONTROLÜ ---
         if (displayList.isEmpty()) {
             item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ShoppingCart, // Boş sepet metaforu
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = Color.LightGray
-                    )
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(imageVector = Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Dolap tam takır!\n(Veya aradığın ürün bulunamadı)",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.Gray,
-                        textAlign = TextAlign.Center
-                    )
+                    Text(text = "Dolap tam takır!\n(Veya aradığın ürün bulunamadı)", style = MaterialTheme.typography.bodyLarge, color = Color.Gray, textAlign = TextAlign.Center)
                 }
             }
         } else {
             items(displayList) { item ->
                 val isCritical = isLowStock(item)
-                val cardColor = if (isCritical) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surface
+
+                // --- RENK MANTIĞI BURADA ---
+                // Eğer kritikse HATA rengi, değilse KATEGORİ rengi
+                val cardColor = if (isCritical) MaterialTheme.colorScheme.errorContainer else getCategoryColor(item.category)
 
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
@@ -226,10 +224,10 @@ fun InventoryScreen(viewModel: InventoryViewModel = viewModel()) {
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(text = "${item.quantityDetails} ${item.unit}", style = MaterialTheme.typography.bodyMedium, color = if(isCritical) MaterialTheme.colorScheme.onErrorContainer else Color.Gray)
+                                Text(text = "${item.quantityDetails} ${item.unit}", style = MaterialTheme.typography.bodyMedium, color = if(isCritical) MaterialTheme.colorScheme.onErrorContainer else Color.DarkGray)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Surface(shape = CircleShape, color = if(isCritical) MaterialTheme.colorScheme.error.copy(alpha=0.2f) else MaterialTheme.colorScheme.tertiaryContainer) {
-                                    Text(text = item.category, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = if(isCritical) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onTertiaryContainer)
+                                Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.5f)) {
+                                    Text(text = item.category, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color.Black)
                                 }
                             }
                         }
