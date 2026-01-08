@@ -16,7 +16,7 @@
         android:usesCleartextTraffic="true">  <activity
         android:name=".MainActivity"
         android:exported="true"
-        android:label="FinalProject"
+        android:label="OptiMutfak"
         android:theme="@style/Theme.FinalProject">
         <intent-filter>
             <action android:name="android.intent.action.MAIN" />
