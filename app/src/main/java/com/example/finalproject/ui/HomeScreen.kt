@@ -238,23 +238,13 @@ fun ExpandableRecipeCard(
     val inventory by viewModel.ingredientList.collectAsState()
 
     // Stok Yeterlilik Kontrolü
-    val isSufficient = remember(portionCount, ingredients, inventory) {
-        if (ingredients.isEmpty()) true else {
-            ingredients.all { req ->
-                val stockItem = inventory.find { it.ingredientId == req.ingredientId }
-                    ?: inventory.find { it.name.equals(req.ingredientName, ignoreCase = true) }
+    // 1. Değişkeni 'remember' ile tanımla (başlangıçta true olsun)
+    var isSufficient by remember { mutableStateOf(true) }
 
-                if (stockItem == null) {
-                    false
-                } else {
-                    val stockBase = if (stockItem.unit.equals("kg", true) || stockItem.unit.equals("L", true)) stockItem.quantityDetails * 1000 else stockItem.quantityDetails
-                    val reqBasePerPortion = if (req.unit.equals("kg", true) || req.unit.equals("L", true)) req.requiredAmount * 1000 else req.requiredAmount
-
-                    val totalNeeded = reqBasePerPortion * portionCount
-                    stockBase >= totalNeeded
-                }
-            }
-        }
+    // 2. Porsiyon veya Envanter her değiştiğinde ViewModel'deki hassas fonksiyona sor
+    LaunchedEffect(portionCount, ingredients, inventory) {
+        // ViewModel'e git ve "Bu porsiyon için stok yeterli mi?" diye sor
+        isSufficient = viewModel.checkStockAvailability(recipe, portionCount)
     }
 
     // Düzenleme Diyaloğu Değişkenleri
@@ -327,17 +317,88 @@ fun ExpandableRecipeCard(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     ingredients.forEach { req ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp)).padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        // 1. Stoktaki ürünü bul
+                        val stockItem = inventory.find { it.ingredientId == req.ingredientId }
+                            ?: inventory.find { it.name.equals(req.ingredientName, ignoreCase = true) }
 
-                            val totalNeeded = req.requiredAmount * portionCount
-                            val displayText = if (portionCount > 1) {
-                                "${req.ingredientName}: ${req.requiredAmount} ${req.unit} (x$portionCount = $totalNeeded)"
-                            } else {
-                                "${req.ingredientName}: ${req.requiredAmount} ${req.unit}"
+                        // 2. STOK MİKTARINI "GRAM" CİNSİNE ÇEVİR
+                        val stockAmount = stockItem?.quantityDetails ?: 0.0
+                        val stockUnit = stockItem?.unit?.lowercase() ?: ""
+
+                        val stockInGrams = when (stockUnit) {
+                            "kg", "l" -> stockAmount * 1000  // Kg ise 1000 ile çarp
+                            else -> stockAmount              // Gram veya Adet ise olduğu gibi al
+                        }
+
+                        // 3. İHTİYAÇ MİKTARINI "GRAM" CİNSİNE ÇEVİR (Kritik Nokta Burası!)
+                        val reqUnit = req.unit.lowercase()
+                        var reqMultiplier = 1.0
+
+                        // Eğer Stok "Kg/Gr" ama Tarif "Adet" ise, ortalama ağırlıklarla çeviri yap
+                        if (reqUnit == "adet" && (stockUnit == "kg" || stockUnit == "gr" || stockUnit == "l" || stockUnit == "ml")) {
+                            reqMultiplier = when {
+                                req.ingredientName.contains("soğan", true) -> 150.0  // 1 Soğan ~ 150gr
+                                req.ingredientName.contains("domates", true) -> 120.0 // 1 Domates ~ 120gr
+                                req.ingredientName.contains("biber", true) -> 60.0    // 1 Biber ~ 60gr
+                                req.ingredientName.contains("yumurta", true) -> 55.0  // 1 Yumurta ~ 55gr
+                                req.ingredientName.contains("patates", true) -> 200.0
+                                else -> 100.0 // Bilinmeyen adetler için ortalama 100gr say
+                            }
+                        } else if (reqUnit == "kg" || reqUnit == "l") {
+                            reqMultiplier = 1000.0
+                        }
+
+                        val totalNeededRaw = req.requiredAmount * portionCount
+                        val totalNeededInGrams = totalNeededRaw * reqMultiplier // Artık ikisi de gram cinsinden!
+
+                        // 4. KIYASLAMA YAP
+                        // StokGram (760) < İhtiyaçGram (6 * 120 = 720)?
+                        // Buradaki hesap hassastır, eksik varsa Kırmızı yanar.
+                        val missingAmountInGrams = totalNeededInGrams - stockInGrams
+                        val isMissing = missingAmountInGrams > 1.0 // 1 gramdan fazla açık varsa eksik say
+
+                        // 5. Ekrana Yazılacak Formatlar
+                        val totalNeededDisplay = String.format("%.1f", totalNeededRaw)
+
+                        // Eksik miktarını kullanıcının anlayacağı birime geri çevirip gösterelim
+                        // Eğer tarif adet ise, eksiği de adet olarak gösterelim (Yaklaşık)
+                        val missingDisplayVal = if (reqMultiplier > 1.0) missingAmountInGrams / reqMultiplier else missingAmountInGrams
+                        val formattedMissing = String.format("%.1f", missingDisplayVal)
+
+                        // --- TASARIM KISMI ---
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                // Eksik varsa KIRMIZI, yoksa GRİ
+                                .background(
+                                    if (isMissing) Color(0xFFFFEBEE) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                // Üst Satır: Malzeme İsmi ve Gerekli Miktar
+                                Text(
+                                    text = "${req.ingredientName}: $totalNeededDisplay ${req.unit}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isMissing) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                                )
+
+                                // Alt Satır: Stok Durumu ve Uyarı (SADECE EKSİKSE GÖRÜNÜR)
+                                if (isMissing) {
+                                    Text(
+                                        text = "⚠️ Stokta: ${stockItem?.quantityDetails ?: 0.0} ${stockItem?.unit ?: ""} (Eksik: ~$formattedMissing ${req.unit})",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
 
-                            Text(text = "- $displayText", style = MaterialTheme.typography.bodyMedium)
-
+                            // İkonlar (Düzenle / Sil)
                             Row {
                                 IconButton(onClick = { editingItem = req; editAmount = req.requiredAmount.toString(); editUnit = req.unit; showEditDialog = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Edit, contentDescription = "Düzenle", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) }
                                 IconButton(onClick = { viewModel.deleteRecipeRequirement(req) }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Delete, contentDescription = "Sil", tint = Color.Red, modifier = Modifier.size(20.dp)) }

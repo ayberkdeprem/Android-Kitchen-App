@@ -142,6 +142,41 @@ class InventoryViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     // --- PİŞİRME FONKSİYONU (DÜZELTİLDİ: GERİ DÖNÜŞÜM EKLENDİ) ---
+
+    // Stok Yeterlilik Kontrolü (Arayüzdeki butonu yönetmek için)
+    suspend fun checkStockAvailability(recipe: Recipe, portions: Int): Boolean {
+        return withContext(Dispatchers.IO) {
+            val requirements = dao.getRequirementsForRecipe(recipe.recipeId)
+            val currentInventory = dao.getAllIngredientsForCheck()
+
+            // Eğer hiç malzeme gereksinimi yoksa (boş tarif), pişirilebilir (True)
+            if (requirements.isEmpty()) return@withContext true
+
+            for (req in requirements) {
+                var stockItem = currentInventory.find { it.ingredientId == req.ingredientId }
+                if (stockItem == null) stockItem = currentInventory.find { it.name.equals(req.ingredientName, ignoreCase = true) }
+
+                if (stockItem == null) {
+                    return@withContext false // Stokta malzeme hiç yok
+                }
+
+                val totalRequired = req.requiredAmount * portions
+
+                // Çarpanları al (cookRecipe ile AYNI mantık)
+                val stockMultiplier = getUnitMultiplier(stockItem.unit, stockItem.name)
+                val reqMultiplier = getUnitMultiplier(req.unit, req.ingredientName)
+
+                val stockInGram = stockItem.quantityDetails * stockMultiplier
+                val reqInGram = totalRequired * reqMultiplier
+
+                // Toleranslı kontrol (-0.1)
+                if (stockInGram < reqInGram - 0.1) {
+                    return@withContext false // Miktar yetersiz
+                }
+            }
+            return@withContext true // Hepsi tamam
+        }
+    }
     fun cookRecipe(recipe: Recipe, portions: Int, onSuccess: () -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
