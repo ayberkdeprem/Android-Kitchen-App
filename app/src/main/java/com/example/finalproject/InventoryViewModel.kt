@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.finalproject.data.UsageStat
 
 class InventoryViewModel(application: Application) : AndroidViewModel(application) {
     val dao = AppDatabase.getDatabase(application).inventoryDao()
@@ -30,6 +31,11 @@ class InventoryViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _cookableRecipes = MutableStateFlow<List<Recipe>>(emptyList())
     val cookableRecipes: StateFlow<List<Recipe>> = _cookableRecipes.asStateFlow()
+
+    val topRecipes = dao.getTopRecipes()
+    val topIngredients = dao.getTopIngredients()
+
+    val recentLogs = dao.getRecentLogs()
 
     init {
         viewModelScope.launch { dao.getAllIngredients().collect { _ingredientList.value = it } }
@@ -196,6 +202,29 @@ class InventoryViewModel(application: Application) : AndroidViewModel(applicatio
                             dao.updateIngredient(stockItem.copy(quantityDetails = newQuantity))
                         }
                     }
+
+                    // 1. Yemeğin kendisini kaydet (Örn: Menemen x 2 porsiyon)
+                    // 1. Yemeğin kendisini kaydet (Birim: "Porsiyon")
+                    dao.insertLog(com.example.finalproject.data.UsageLog(
+                        itemName = recipe.recipeName,
+                        itemType = "RECIPE",
+                        amount = portions.toDouble(),
+                        unit = "Porsiyon" // <-- YENİ
+                    ))
+
+                    // 2. Kullanılan malzemeleri kaydet (Birim: req.unit yani "Adet", "kg" vb.)
+                    for (req in requirements) {
+                        val totalUsed = req.requiredAmount * portions
+                        dao.insertLog(com.example.finalproject.data.UsageLog(
+                            itemName = req.ingredientName,
+                            itemType = "INGREDIENT",
+                            amount = totalUsed,
+                            unit = req.unit // <-- YENİ: Malzemenin kendi birimi
+                        ))
+                    }
+
+                    calculateCookableRecipes() // "Yapılabilirler" listesini güncelle
+                    // --- 🔥 YENİ EKLENEN KISIM BİTİŞ 🔥 ---
                     withContext(Dispatchers.Main) { onSuccess() }
                 }
             }
@@ -204,41 +233,63 @@ class InventoryViewModel(application: Application) : AndroidViewModel(applicatio
 
     // --- EKSİK LİSTESİ ---
     fun addMissingToShoppingList(recipe: Recipe, portions: Int, onResult: (String) -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val requirements = dao.getRequirementsForRecipe(recipe.recipeId)
-            val currentInventory = dao.getAllIngredientsForCheck()
-            var addedCount = 0
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val requirements = dao.getRequirementsForRecipe(recipe.recipeId)
+                val currentInventory = dao.getAllIngredientsForCheck()
+                var addedCount = 0
 
-            for (req in requirements) {
-                var stockItem = currentInventory.find { it.ingredientId == req.ingredientId }
-                if (stockItem == null) stockItem = currentInventory.find { it.name.equals(req.ingredientName, ignoreCase = true) }
+                for (req in requirements) {
+                    var stockItem = currentInventory.find { it.ingredientId == req.ingredientId }
+                    if (stockItem == null) stockItem = currentInventory.find { it.name.equals(req.ingredientName, ignoreCase = true) }
 
-                val totalRequired = req.requiredAmount * portions
+                    val totalRequired = req.requiredAmount * portions
 
-                if (stockItem == null) {
-                    dao.insertShoppingItem(ShoppingItem(name = req.ingredientName, quantityNeeded = totalRequired, unit = req.unit))
-                    addedCount++
-                } else {
-                    val stockMultiplier = getUnitMultiplier(stockItem.unit, stockItem.name)
+                    // Çarpanları hesapla
                     val reqMultiplier = getUnitMultiplier(req.unit, req.ingredientName)
+                    // Eğer stokta yoksa varsayılan çarpan kullan, varsa stoğun çarpanını kullan
+                    val stockMultiplier = if (stockItem != null) getUnitMultiplier(stockItem.unit, stockItem.name) else reqMultiplier
 
-                    val stockInGram = stockItem.quantityDetails * stockMultiplier
                     val reqInGram = totalRequired * reqMultiplier
+                    val stockInGram = (stockItem?.quantityDetails ?: 0.0) * stockMultiplier
 
-                    if (stockInGram < reqInGram) {
-                        val missingInGram = reqInGram - stockInGram
+                    val missingInGram = reqInGram - stockInGram
 
-                        // Eksik miktarı TARİFİN BİRİMİNE geri çevirerek listeye ekle
-                        val missingAmount = missingInGram / reqMultiplier
+                    if (missingInGram > 0) {
+                        // --- DÜZELTME BURADA ---
+                        // Eksik miktarı GRAM olarak bulduk.
+                        // Bunu alışveriş listesine yazarken STOKTAKİ BİRİME çevirmeliyiz.
+                        // Böylece "Satın Al" dediğinde birimler uyuşur.
 
-                        dao.insertShoppingItem(ShoppingItem(name = stockItem.name, quantityNeeded = missingAmount, unit = req.unit))
+                        val amountForList: Double
+                        val unitForList: String
+
+                        if (stockItem != null) {
+                            // Stokta varsa: Stoğun birimine çevir (Örn: Gram -> Kg)
+                            amountForList = missingInGram / stockMultiplier
+                            unitForList = stockItem.unit
+                        } else {
+                            // Stokta hiç yoksa: Tarifin birimini kullan (Örn: Gram -> Adet)
+                            amountForList = missingInGram / reqMultiplier
+                            unitForList = req.unit
+                        }
+
+                        // Sayıyı yuvarla (Örn: 1.33333 yerine 1.34 gibi)
+                        val formattedAmount = Math.ceil(amountForList * 100) / 100.0
+
+                        dao.insertShoppingItem(com.example.finalproject.data.ShoppingItem(
+                            name = req.ingredientName,
+                            quantityNeeded = formattedAmount,
+                            unit = unitForList,
+                            isBought = false
+                        ))
                         addedCount++
                     }
                 }
-            }
-            withContext(Dispatchers.Main) {
-                if (addedCount > 0) onResult("📝 $addedCount eksik market listesine eklendi!")
-                else onResult("✅ Bu porsiyon için elindeki malzemeler yeterli.")
+                withContext(Dispatchers.Main) {
+                    if (addedCount > 0) onResult("$addedCount malzeme listeye eklendi 🛒")
+                    else onResult("Eksik malzeme yok! ✅")
+                }
             }
         }
     }

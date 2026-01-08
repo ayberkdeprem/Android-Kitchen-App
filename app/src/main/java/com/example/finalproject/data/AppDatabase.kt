@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 // YENİ EKLENEN: ShoppingItem::class
-@Database(entities = [Ingredient::class, Recipe::class, RecipeRequirement::class, ShoppingItem::class], version = 7, exportSchema = false)
+@Database(entities = [Ingredient::class, Recipe::class, RecipeRequirement::class, ShoppingItem::class, UsageLog::class], version = 10, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun inventoryDao(): InventoryDao
 

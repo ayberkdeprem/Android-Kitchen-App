@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,13 +12,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info // YENİ İKON (Bilgi)
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -36,22 +40,21 @@ import coil.request.ImageRequest
 import com.example.finalproject.InventoryViewModel
 import com.example.finalproject.data.Recipe
 import com.example.finalproject.data.RecipeRequirement
-import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.LightMode
-import androidx.compose.foundation.isSystemInDarkTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: InventoryViewModel = viewModel(),
     onNavigateToInventory: () -> Unit,
-    // --- YENİ EKLENEN PARAMETRELER ---
     isDarkTheme: Boolean,
     onThemeChanged: () -> Unit
 ) {
     val allRecipes by viewModel.recipeList.collectAsState()
     val cookableRecipes by viewModel.cookableRecipes.collectAsState()
     val context = LocalContext.current
+
+    // --- YARDIM PENCERESİ İÇİN STATE ---
+    var showHelpDialog by remember { mutableStateOf(false) }
 
     var selectedTab by remember { mutableStateOf(0) }
     var searchText by remember { mutableStateOf("") }
@@ -71,9 +74,45 @@ fun HomeScreen(
         matchesSearch && matchesCategory
     }
 
+    // --- YARDIM PENCERESİ TASARIMI (ALERT DIALOG) ---
+    if (showHelpDialog) {
+        AlertDialog(
+            onDismissRequest = { showHelpDialog = false },
+            icon = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Uygulama Nasıl Kullanılır? 🎓") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Hoş geldin Şef! İşte uygulamanın mantığı:", style = MaterialTheme.typography.bodyMedium)
+
+                    Divider()
+
+                    Text("1. Stok Ekleme 📦", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Önce 'Stok' sayfasına git ve mutfağındaki malzemeleri (Un, Şeker, Domates vb.) ekle.", style = MaterialTheme.typography.bodySmall)
+
+                    Text("2. Tarif Oluşturma 🍲", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("'Tarif Ekle' sayfasından yeni bir yemek ismi ve fotoğrafı girip kaydet.", style = MaterialTheme.typography.bodySmall)
+
+                    Text("3. Reçete Bağlama 🔗", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Tarifi kaydettikten sonra, hemen altından o yemeğin hangi malzemeden ne kadar harcadığını seç ve 'Reçeteye Ekle' butonuna bas. (Örn: Menemen -> 2 Domates)", style = MaterialTheme.typography.bodySmall)
+
+                    Text("4. Pişirme ve Takip 🔥", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("Ana Sayfada yemeğin üstüne tıkla. Porsiyon seçip 'PİŞİR' dediğinde stoktan otomatik düşer. Eğer malzeme eksikse 'EKSİKLER' butonuyla alışveriş listesi oluşturabilirsin.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showHelpDialog = false }) {
+                    Text("HARİKA, ANLADIM! 👍")
+                }
+            }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
 
-        // --- BAŞLIK KISMI GÜNCELLENDİ (GÜNEŞ/AY BUTONU EKLENDİ) ---
+        // --- BAŞLIK KISMI (BİLGİ BUTONU EKLENDİ) ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -86,16 +125,29 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            // TEMA DEĞİŞTİRME BUTONU
-            IconButton(onClick = onThemeChanged) {
-                Icon(
-                    // Eğer tema Koyu ise -> Güneş göster (Aydınlığa geçmek için)
-                    // Eğer tema Açık ise -> Ay göster (Karanlığa geçmek için)
-                    imageVector = if (isDarkTheme) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
-                    contentDescription = "Tema Değiştir",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp)
-                )
+            // BUTON GRUBU
+            Row {
+                // YENİ: NASIL KULLANILIR BUTONU
+                IconButton(onClick = { showHelpDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Nasıl Kullanılır",
+                        tint = MaterialTheme.colorScheme.secondary, // Farklı renk olsun
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // TEMA DEĞİŞTİRME BUTONU
+                IconButton(onClick = onThemeChanged) {
+                    Icon(
+                        imageVector = if (isDarkTheme) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
+                        contentDescription = "Tema Değiştir",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
             }
         }
 
@@ -109,7 +161,6 @@ fun HomeScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        // KATEGORİ BUTONLARI
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)

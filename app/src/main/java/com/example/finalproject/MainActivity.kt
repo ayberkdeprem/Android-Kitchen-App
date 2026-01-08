@@ -22,6 +22,8 @@ import com.example.finalproject.ui.RecipeScreen
 import com.example.finalproject.ui.ShoppingScreen
 import com.example.finalproject.ui.theme.FinalProjectTheme
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DateRange
+import com.example.finalproject.ui.AnalysisScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,6 +69,13 @@ class MainActivity : ComponentActivity() {
                                 selected = currentRoute == "shopping",
                                 onClick = { navController.navigate("shopping") }
                             )
+
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.DateRange, contentDescription = "Analiz") },
+                                label = { Text("Analiz") },
+                                selected = currentRoute == "analysis",
+                                onClick = { navController.navigate("analysis") }
+                            )
                         }
                     }
                 ) { innerPadding ->
@@ -87,6 +96,7 @@ class MainActivity : ComponentActivity() {
                         composable("recipes") { RecipeScreen(viewModel) }
                         composable("inventory") { InventoryScreen(viewModel) }
                         composable("shopping") { ShoppingScreen(viewModel) }
+                        composable("analysis") { AnalysisScreen(viewModel) }
                     }
                 }
             }

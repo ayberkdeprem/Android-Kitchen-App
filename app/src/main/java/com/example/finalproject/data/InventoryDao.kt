@@ -74,4 +74,20 @@ interface InventoryDao {
 
     @Delete
     suspend fun deleteShoppingItem(item: ShoppingItem)
+
+    // Günlük Kaydı Ekle
+    @Insert
+    suspend fun insertLog(log: UsageLog)
+
+    // En Çok Yapılan YEMEKLERİ Getir (Top 10)
+    @Query("SELECT itemName as name, COUNT(*) as totalAmount FROM usage_logs WHERE itemType = 'RECIPE' GROUP BY itemName ORDER BY totalAmount DESC LIMIT 10")
+    fun getTopRecipes(): kotlinx.coroutines.flow.Flow<List<UsageStat>>
+
+    // En Çok Kullanılan MALZEMELERİ Getir (Top 10 - Miktarı toplayarak)
+    @Query("SELECT itemName as name, SUM(amount) as totalAmount FROM usage_logs WHERE itemType = 'INGREDIENT' GROUP BY itemName ORDER BY totalAmount DESC LIMIT 10")
+    fun getTopIngredients(): kotlinx.coroutines.flow.Flow<List<UsageStat>>
+
+    // Son İşlemleri Getir (Tarihe göre en yeniden eskiye)
+    @Query("SELECT * FROM usage_logs ORDER BY timestamp DESC LIMIT 50")
+    fun getRecentLogs(): kotlinx.coroutines.flow.Flow<List<UsageLog>>
 }
